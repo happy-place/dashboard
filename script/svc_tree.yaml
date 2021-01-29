@@ -1,0 +1,23 @@
+TreeClickhouse:
+  Truncate: "ALTER TABLE shard.user_dep ON CLUSTER '{CLUSTER_NAME}' DELETE WHERE user_id is not null"
+  Upsert: "INSERT INTO all.user_dep VALUES (?,?)"
+TreeSqlite:
+  CreateEdge: "CREATE TABLE `edge` (
+      `node_type` tinyint(4) NOT NULL,
+      `node_id` bigint(20) NOT NULL,
+      `parent_type` tinyint(4) NOT NULL,
+      `parent_id` bigint(20) NOT NULL,
+      `version` bigint(20) NOT NULL,
+      `order` bigint(20) NOT NULL,
+      `is_link` tinyint(1) NOT NULL,
+      `is_removed` tinyint(1) NOT NULL
+    );"
+  CreateDep: "
+    )"
+  Upsert: "INSERT INTO edge VALUES (?,?,?,?,?,?,?,?)"
+  Call: "SELECT node_id,getDeps(node_id,node_type) deps from (
+            select distinct node_id,node_type from edge where node_type = 11 limit 100
+        ) temp"
+TreeMysql:
+  Query: "select node_type,node_id,parent_type,parent_id,version,`order`,is_link!=b'0' as is_link,is_removed!=b'0' as is_removed
+          from svc_tree.edge where is_removed=b'0'"

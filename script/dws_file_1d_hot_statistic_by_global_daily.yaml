@@ -1,0 +1,72 @@
+Clickhouse:
+  Truncate: "ALTER TABLE shard.dws_file_1d_hot_statistic_by_global_daily ON CLUSTER '{CLUSTER_NAME}' DELETE WHERE ldate = '{DATE}'"
+  Upsert: "INSERT INTO all.dws_file_1d_hot_statistic_by_global_daily (ldate,team_id,guid,name,type,sub_type,file_views,row_number)
+           select ldate,team_id,guid,name,type,sub_type,file_views,row_number/*,dense_rank,uniq_rank*/ from
+           (
+               select * from (
+                     SELECT ldate,
+                            team_id,
+                            guid,
+                            row_number,
+                            dense_rank,
+                            uniq_rank
+                     FROM (
+                       SELECT ldate,team_id,
+                              groupArray(guid)       AS arr_val,
+                              arrayEnumerate(arr_val)      AS row_number,
+                              arrayEnumerateDense(arr_val) AS dense_rank,
+                              arrayEnumerateUniq(arr_val)  AS uniq_rank
+                       FROM (
+                             select ldate,team_id,guid,name,file_views from
+                                 (
+                                     select ldate,
+                                            team_id,
+                                            guid,
+                                            count(1) as file_views
+                                     from shimo.events_all_view
+                                     where ldate >= '{DATE}' and ldate <= '{DATE}'
+                                       and file_type in (2, 3) and action_name = 'view_file'
+                                       and team_id is not null
+                                     group by ldate,team_id, guid
+                                 ) t1
+                                     left join
+                                 (
+                                     select guid,name from shimo.all_files
+                                 ) t2 on t1.guid = t2.guid
+                             where file_views >0 ORDER BY file_views DESC
+                           ) GROUP BY ldate,team_id
+                          ) ARRAY JOIN
+                          arr_val AS guid,
+                         row_number,
+                         dense_rank,
+                         uniq_rank
+                     ORDER BY team_id, guid ASC,
+                              row_number ASC,
+                              dense_rank ASC
+               ) t where row_number<=100
+           ) as t1
+               left join
+           (
+               select ldate,team_id,guid,name,type,sub_type,file_views from
+                   (
+                       select ldate,
+                              toNullable(team_id) as team_id,
+                              toNullable(guid) as guid,
+                              count(1) as file_views
+                       from shimo.events_all_view
+                       where ldate >= '{DATE}' and ldate <= '{DATE}'
+                         and file_type in (2, 3) and action_name = 'view_file'
+                         and team_id is not null
+                       group by ldate,team_id, guid
+                   ) t1
+                       left join
+                   (
+                       select toNullable(guid) as guid,toNullable(name) as name,toNullable(type) as type,toNullable(sub_type) as sub_type from shimo.all_files
+                   ) t2 on t1.guid = t2.guid where file_views > 0
+               order by file_views desc
+           ) t2 on  t1.ldate = t2.ldate and t1.team_id = t2.team_id and t1.guid = t2.guid
+           order by t1.ldate,t1.team_id,file_views desc"
+  Query: "SELECT * FROM all.dws_file_1d_hot_statistic_by_global_daily WHERE ldate = '{DATE}'"
+Mysql:
+  Truncate: "DELETE FROM dws_file_1d_hot_statistic_by_global_daily WHERE ldate = '{DATE}'"
+  Upsert: "INSERT INTO dws_file_1d_hot_statistic_by_global_daily VALUES(?,?,?,?,?,?,?,?)"
